@@ -10,7 +10,7 @@ export function Welcome() {
     <div className="max-w-3xl mx-auto">
       <div className="flex flex-col items-center text-center mb-8">
         <img 
-          src="/public/logo.png" 
+          src="/public/french-tech-image.png"
           alt="French Tech Logo" 
           className="h-28 w-auto mb-4"
         />
