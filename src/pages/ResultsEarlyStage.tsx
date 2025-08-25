@@ -4,13 +4,17 @@ import { FileText, ArrowRight } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useLocation, useNavigate } from "react-router-dom";
 
-const ResultsEarlyStage = () => {
+interface ResultsEarlyStageProps {
+  projectId: string | null;
+}
+
+const ResultsEarlyStage = ({ projectId }: ResultsEarlyStageProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const formData = location.state?.formData || {};
 
   const handleCompleteAnalysis = () => {
-    navigate("/results/second-form", { state: { formData: formData } });
+    navigate(`/results/second-form?projectId=${projectId}`, { state: { formData: formData } });
   };
 
   return (

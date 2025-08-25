@@ -19,4 +19,8 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    include: ['@supabase/postgrest-js'],
+    exclude: ['@supabase/supabase-js'],
+  },
 }));

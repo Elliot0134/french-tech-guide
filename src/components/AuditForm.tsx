@@ -113,11 +113,15 @@ type FormData = z.infer<typeof formSchema>;
 
 interface AuditFormProps {
   setFormData: (data: FormData) => void;
+  initialData?: Partial<FormData>;
+  startStepId?: string;
 }
 
-export function AuditForm({ setFormData }: AuditFormProps) {
+export function AuditForm({ setFormData, initialData, startStepId }: AuditFormProps) {
   const navigate = useNavigate();
-  const [currentStep, setCurrentStep] = useState(0);
+  
+  const initialStepIndex = startStepId ? formSteps.findIndex(step => step.id === startStepId) : 0;
+  const [currentStep, setCurrentStep] = useState(initialStepIndex >= 0 ? initialStepIndex : 0);
   
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -151,6 +155,7 @@ export function AuditForm({ setFormData }: AuditFormProps) {
       lastName: "",
       email: "",
       phone: "",
+      ...initialData, // Apply initial data
     },
     mode: "onChange",
   });
@@ -225,7 +230,10 @@ export function AuditForm({ setFormData }: AuditFormProps) {
   const onSubmit = async (data: FormData) => {
     setFormData(data);
 
+    const projectId = crypto.randomUUID(); // Generate a unique project ID
+
     const dataToInsert = {
+      project_id: projectId, // Add project_id to the data
       nom_projet: data.projectName,
       secteur_activite: data.sector,
       secteur_autre: data.sectorOther,
@@ -266,9 +274,36 @@ export function AuditForm({ setFormData }: AuditFormProps) {
       alert("Une erreur est survenue lors de l'enregistrement de vos réponses.");
     } else {
       console.log("Data inserted successfully!");
+
+      // Send projectId to webhook
+      try {
+        const webhookUrl = "https://n8n.srv906204.hstgr.cloud/webhook/formulaire-french-tech";
+        const response = await fetch(webhookUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ projectId: projectId }),
+        });
+
+        if (!response.ok) {
+          console.error("Webhook call failed:", response.statusText);
+        } else {
+          console.log("ProjectId sent to webhook successfully!");
+        }
+      } catch (webhookError) {
+        console.error("Error sending projectId to webhook:", webhookError);
+      }
+
       // Determine which results page to navigate to based on the stage
       const isEarlyStage = ["idea", "mvp", "prototype"].includes(data.stage);
-      navigate("/results", { state: { formData: data, isEarlyStage: isEarlyStage } });
+      
+      // If this is the second form submission, navigate to the submitted results page
+      if (startStepId) {
+        navigate(`/results/submitted?projectId=${projectId}`, { state: { formData: data, isSecondFormSubmitted: true } });
+      } else {
+        navigate(`/results?projectId=${projectId}`, { state: { formData: data, isEarlyStage: isEarlyStage } });
+      }
     }
   };
 

@@ -10,21 +10,18 @@ export function Welcome() {
     <div className="max-w-3xl mx-auto">
       <div className="flex flex-col items-center text-center mb-8">
         <img 
-          src="/src/assets/french-tech-logo.png" 
+          src="/public/logo.png" 
           alt="French Tech Logo" 
           className="h-28 w-auto mb-4"
         />
         <h1 className="text-3xl md:text-4xl font-bold text-primary">
-          Audit de Projet Entrepreneurial
+          Inscription <br className="sm:hidden" />French Tech
         </h1>
-        <p className="text-xl text-muted-foreground mt-2">
-          Évaluez votre startup et obtenez des recommandations personnalisées
-        </p>
       </div>
 
       <Card className="border-primary/20 mb-6">
         <CardHeader>
-          <CardTitle>Bienvenue sur notre outil d'audit</CardTitle>
+          <CardTitle>Inscrivez votre projet</CardTitle>
           <CardDescription>
             Un service exclusif de La French Tech pour accompagner les entrepreneurs
           </CardDescription>
@@ -32,8 +29,7 @@ export function Welcome() {
         <CardContent>
           <div className="space-y-4">
             <p>
-              Ce formulaire d'audit vous permet d'obtenir une analyse personnalisée de votre projet
-              entrepreneurial et de recevoir des recommandations adaptées à vos besoins spécifiques.
+              Ce formulaire d'inscription vous permet de présenter votre projet entrepreneurial. Si votre entreprise est en cours de création, vous recevrez des recommandations stratégiques personnalisées.
             </p>
             
             <div className="space-y-2">
@@ -64,7 +60,7 @@ export function Welcome() {
             className="w-full" 
             onClick={() => navigate("/audit")}
           >
-            Commencer l'audit
+            Commencer l'inscription
           </Button>
           <p className="text-xs text-muted-foreground mt-4">
             Vos données resteront confidentielles et ne seront utilisées que dans le cadre de votre accompagnement.

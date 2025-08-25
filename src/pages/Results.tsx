@@ -7,6 +7,9 @@ const Results = () => {
   const location = useLocation();
   const formData = location.state?.formData || {};
   const isSecondFormSubmitted = location.state?.isSecondFormSubmitted || false;
+  
+  const queryParams = new URLSearchParams(location.search);
+  const projectId = queryParams.get("projectId");
 
   // Check if user is in early stage (idea, mvp, prototype)
   const isEarlyStage = ["idea", "mvp", "prototype"].includes(formData.stage);
@@ -14,9 +17,9 @@ const Results = () => {
   if (isSecondFormSubmitted) {
     return <ResultsSecondFormSubmitted />;
   } else if (isEarlyStage) {
-    return <ResultsEarlyStage />;
+    return <ResultsEarlyStage projectId={projectId} />;
   } else {
-    return <ResultsAdvancedStage />;
+    return <ResultsAdvancedStage projectId={projectId} />;
   }
 };
 
