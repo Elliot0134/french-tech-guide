@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { useForm } from "react-hook-form";
@@ -14,9 +14,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { ProgressBar } from "./ProgressBar";
-import { ChevronLeft, ChevronRight, Send } from "lucide-react";
+import { ChevronLeft, ChevronRight, Send, RotateCcw } from "lucide-react";
 
 const formSteps = [
+  {
+    id: "adherent",
+    title: "Adhésion French Tech",
+  },
+  {
+    id: "hasProject",
+    title: "Projet entrepreneurial",
+  },
   {
     id: "general",
     title: "Informations générales",
@@ -45,9 +53,22 @@ const formSteps = [
     id: "contact",
     title: "Informations de contact",
   },
+  {
+    id: "message",
+    title: "Message complémentaire",
+  },
 ];
 
 // Form schemas for each step
+const adherentSchema = z.object({
+  isAdherent: z.enum(["yes", "no", ""], { required_error: "Veuillez sélectionner une option" }).refine(val => val !== "", { message: "Veuillez sélectionner une option" }),
+  adherentCode: z.string().optional(),
+});
+
+const hasProjectSchema = z.object({
+  hasProject: z.enum(["yes", "no", ""], { required_error: "Veuillez sélectionner une option" }).refine(val => val !== "", { message: "Veuillez sélectionner une option" }),
+});
+
 const generalSchema = z.object({
   projectName: z.string().min(2, { message: "Le nom du projet est requis" }),
   sector: z.string().min(1, { message: "Le secteur d'activité est requis" }),
@@ -69,6 +90,8 @@ const motivationsSchema = z.object({
 const budgetSchema = z.object({
   budgetFormation: z.string().optional(),
   disponibilite: z.string().optional(),
+  aidesFinancieres: z.array(z.string()).optional(),
+  autreAideFinanciere: z.string().optional(),
 });
 
 const legalSchema = z.object({
@@ -98,8 +121,14 @@ const contactSchema = z.object({
   phone: z.string().min(10, { message: "Le numéro de téléphone est requis" }),
 });
 
+const messageSchema = z.object({
+  userAddMessage: z.string().optional(),
+});
+
 // Combined schema for the entire form
 const formSchema = z.object({
+  ...adherentSchema.shape,
+  ...hasProjectSchema.shape,
   ...generalSchema.shape,
   ...motivationsSchema.shape,
   ...budgetSchema.shape,
@@ -107,6 +136,7 @@ const formSchema = z.object({
   ...productSchema.shape,
   ...financeSchema.shape,
   ...contactSchema.shape,
+  ...messageSchema.shape,
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -119,13 +149,46 @@ interface AuditFormProps {
 
 export function AuditForm({ setFormData, initialData, startStepId }: AuditFormProps) {
   const navigate = useNavigate();
-  
-  const initialStepIndex = startStepId ? formSteps.findIndex(step => step.id === startStepId) : 0;
+
+  const STORAGE_KEY = "frenchTechAuditForm";
+  const STORAGE_STEP_KEY = "frenchTechAuditFormStep";
+
+  // Load saved data from localStorage
+  const getSavedData = (): Partial<FormData> => {
+    try {
+      const savedData = localStorage.getItem(STORAGE_KEY);
+      return savedData ? JSON.parse(savedData) : {};
+    } catch (error) {
+      console.error("Error loading saved form data:", error);
+      return {};
+    }
+  };
+
+  // Load saved step from localStorage
+  const getSavedStep = (): number => {
+    try {
+      const savedStep = localStorage.getItem(STORAGE_STEP_KEY);
+      return savedStep ? parseInt(savedStep, 10) : 0;
+    } catch (error) {
+      console.error("Error loading saved step:", error);
+      return 0;
+    }
+  };
+
+  const savedData = getSavedData();
+  const savedStep = getSavedStep();
+
+  const initialStepIndex = startStepId
+    ? formSteps.findIndex(step => step.id === startStepId)
+    : savedStep;
   const [currentStep, setCurrentStep] = useState(initialStepIndex >= 0 ? initialStepIndex : 0);
-  
+
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      isAdherent: "",
+      adherentCode: "",
+      hasProject: "",
       projectName: "",
       sector: "",
       sectorOther: "",
@@ -140,6 +203,8 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
       visibiliteOpportunites: [],
       budgetFormation: "",
       disponibilite: "",
+      aidesFinancieres: [],
+      autreAideFinanciere: "",
       companyCreated: "",
       legalForm: "",
       creationDate: "",
@@ -155,37 +220,93 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
       lastName: "",
       email: "",
       phone: "",
-      ...initialData, // Apply initial data
+      userAddMessage: "",
+      ...savedData, // Apply saved data from localStorage
+      ...initialData, // Apply initial data (takes precedence)
     },
     mode: "onChange",
   });
 
   const { watch } = form;
+  const isAdherent = watch("isAdherent");
+  const adherentCode = watch("adherentCode");
+  const hasProject = watch("hasProject");
   const companyCreated = watch("companyCreated");
   const hasUsers = watch("hasUsers");
   const fundraising = watch("fundraising");
   const sector = watch("sector");
   const stage = watch("stage");
   const frenchTechMotivations = watch("frenchTechMotivations");
+  const aidesFinancieres = watch("aidesFinancieres");
+
+  // State for adherent code validation
+  const [codeError, setCodeError] = useState<string>("");
+
+  // Auto-save form data to localStorage
+  useEffect(() => {
+    const subscription = watch((formData) => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(formData));
+      } catch (error) {
+        console.error("Error saving form data:", error);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [watch]);
+
+  // Save current step to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_STEP_KEY, currentStep.toString());
+    } catch (error) {
+      console.error("Error saving current step:", error);
+    }
+  }, [currentStep]);
 
   // Check if budget step should be shown
   const shouldShowBudgetStep = () => {
-    return frenchTechMotivations?.includes("accompagnement") || frenchTechMotivations?.includes("formation");
+    return frenchTechMotivations?.includes("accompagnement") ||
+           frenchTechMotivations?.includes("formation") ||
+           frenchTechMotivations?.includes("ressources");
   };
 
   // Get visible steps based on conditions
   const getVisibleSteps = () => {
     const steps = [...formSteps];
-    if (!shouldShowBudgetStep()) {
-      return steps.filter(step => step.id !== "budget");
+
+    // If hasProject is "no", show only: adherent, hasProject, general (with limited motivations), contact, message
+    if (hasProject === "no") {
+      return steps.filter(step =>
+        step.id === "adherent" ||
+        step.id === "hasProject" ||
+        step.id === "general" ||
+        step.id === "contact" ||
+        step.id === "message"
+      );
     }
-    return steps;
+
+    // If hasProject is "yes", show all steps except message
+    if (hasProject === "yes") {
+      let filteredSteps = steps.filter(step => step.id !== "message");
+
+      // Also filter budget step if conditions not met
+      if (!shouldShowBudgetStep()) {
+        filteredSteps = filteredSteps.filter(step => step.id !== "budget");
+      }
+
+      return filteredSteps;
+    }
+
+    // If hasProject not selected yet, only show adherent and hasProject steps
+    return steps.filter(step => step.id === "adherent" || step.id === "hasProject");
   };
 
   const visibleSteps = getVisibleSteps();
 
   const nextStep = async () => {
     const stepSchemas = [
+      adherentSchema,
+      hasProjectSchema,
       generalSchema,
       motivationsSchema,
       budgetSchema,
@@ -193,17 +314,58 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
       productSchema,
       financeSchema,
       contactSchema,
+      messageSchema,
     ];
-    
+
     const currentStepId = visibleSteps[currentStep]?.id;
     let schemaIndex = formSteps.findIndex(step => step.id === currentStepId);
-    
+
+    // Special validation for adherent step
+    if (currentStepId === "adherent") {
+      const currentValues = form.getValues();
+
+      if (!currentValues.isAdherent || currentValues.isAdherent === "") {
+        form.setError("isAdherent", {
+          type: "manual",
+          message: "Veuillez sélectionner une option",
+        });
+        return;
+      }
+
+      // If user said yes, validate the code
+      if (currentValues.isAdherent === "yes") {
+        const enteredCode = currentValues.adherentCode?.trim() || "";
+        const validCode = "FTGP-ADH-2025";
+
+        if (enteredCode.toUpperCase() !== validCode) {
+          setCodeError("Code invalide");
+          return;
+        }
+      }
+
+      // Clear code error if validation passed
+      setCodeError("");
+    }
+
+    // Special validation for hasProject step
+    if (currentStepId === "hasProject") {
+      const currentValues = form.getValues();
+
+      if (!currentValues.hasProject || currentValues.hasProject === "") {
+        form.setError("hasProject", {
+          type: "manual",
+          message: "Veuillez sélectionner une option",
+        });
+        return;
+      }
+    }
+
     const currentSchema = stepSchemas[schemaIndex];
     const currentValues = form.getValues();
-    
+
     // Validate only the current step's fields
     const result = await currentSchema.safeParseAsync(currentValues);
-    
+
     if (result.success) {
       if (currentStep < visibleSteps.length - 1) {
         setCurrentStep(currentStep + 1);
@@ -227,13 +389,74 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
     }
   };
 
+  const resetForm = () => {
+    if (confirm("Êtes-vous sûr de vouloir recommencer le formulaire depuis le début ? Toutes vos réponses seront effacées.")) {
+      // Clear localStorage
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(STORAGE_STEP_KEY);
+      } catch (error) {
+        console.error("Error clearing localStorage:", error);
+      }
+
+      // Reset form to initial state
+      form.reset({
+        isAdherent: "",
+        adherentCode: "",
+        hasProject: "",
+        projectName: "",
+        sector: "",
+        sectorOther: "",
+        stage: "",
+        website: "",
+        frenchTechMotivations: [],
+        accompagnementProject: [],
+        reseauCommunaute: [],
+        formationCompetences: [],
+        financementBusiness: [],
+        ressourcesSupport: [],
+        visibiliteOpportunites: [],
+        budgetFormation: "",
+        disponibilite: "",
+        aidesFinancieres: [],
+        autreAideFinanciere: "",
+        companyCreated: "",
+        legalForm: "",
+        creationDate: "",
+        intellectualProperty: "",
+        projectDescription: "",
+        productDescription: "",
+        hasUsers: "",
+        userCount: "",
+        fundraising: "",
+        amountRaised: "",
+        teamSize: "",
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        userAddMessage: "",
+      });
+
+      // Reset to first step
+      setCurrentStep(0);
+      window.scrollTo(0, 0);
+    }
+  };
+
   const onSubmit = async (data: FormData) => {
     setFormData(data);
 
     const projectId = crypto.randomUUID(); // Generate a unique project ID
 
+    // Determine if user is adherent (yes with valid code)
+    const isValidAdherent = data.isAdherent === "yes" &&
+                            data.adherentCode?.trim().toUpperCase() === "FTGP-ADH-2025";
+
     const dataToInsert = {
       project_id: projectId, // Add project_id to the data
+      adherant: isValidAdherent,
+      has_project: data.hasProject === "yes",
       nom_projet: data.projectName,
       secteur_activite: data.sector,
       secteur_autre: data.sectorOther,
@@ -248,6 +471,8 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
       visibilite_opportunites: data.visibiliteOpportunites ? JSON.stringify(data.visibiliteOpportunites) : null,
       budget_formation: data.budgetFormation,
       disponibilite: data.disponibilite,
+      aides_financieres: data.aidesFinancieres ? JSON.stringify(data.aidesFinancieres) : null,
+      autre_aide_financiere: data.autreAideFinanciere,
       entreprise_creee: data.companyCreated,
       forme_juridique: data.legalForm,
       date_creation: data.creationDate === "" ? null : data.creationDate,
@@ -263,6 +488,7 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
       nom: data.lastName,
       email: data.email,
       telephone: data.phone,
+      user_add_message: data.userAddMessage,
     };
 
     const { error } = await supabase
@@ -275,7 +501,15 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
     } else {
       console.log("Data inserted successfully!");
 
-      // Send projectId to webhook
+      // Clear localStorage after successful submission
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(STORAGE_STEP_KEY);
+      } catch (error) {
+        console.error("Error clearing localStorage:", error);
+      }
+
+      // Send projectId, aidesFinancieres, autreAideFinanciere and userAddMessage to webhook
       try {
         const webhookUrl = "https://n8n.srv906204.hstgr.cloud/webhook/formulaire-french-tech";
         const response = await fetch(webhookUrl, {
@@ -283,26 +517,31 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ projectId: projectId }),
+          body: JSON.stringify({
+            projectId: projectId,
+            aidesFinancieres: data.aidesFinancieres || [],
+            autreAideFinanciere: data.autreAideFinanciere || "",
+            userAddMessage: data.userAddMessage || ""
+          }),
         });
 
         if (!response.ok) {
           console.error("Webhook call failed:", response.statusText);
         } else {
-          console.log("ProjectId sent to webhook successfully!");
+          console.log("ProjectId, aidesFinancieres and userAddMessage sent to webhook successfully!");
         }
       } catch (webhookError) {
-        console.error("Error sending projectId to webhook:", webhookError);
+        console.error("Error sending data to webhook:", webhookError);
       }
 
       // Determine which results page to navigate to based on the stage
       const isEarlyStage = ["idea", "mvp", "prototype"].includes(data.stage);
-      
+
       // If this is the second form submission, navigate to the submitted results page
       if (startStepId) {
-        navigate(`/results/submitted?projectId=${projectId}`, { state: { formData: data, isSecondFormSubmitted: true } });
+        navigate(`/results/submitted?projectId=${projectId}`, { state: { formData: data, isSecondFormSubmitted: true, isAdherent: isValidAdherent } });
       } else {
-        navigate(`/results?projectId=${projectId}`, { state: { formData: data, isEarlyStage: isEarlyStage } });
+        navigate(`/results?projectId=${projectId}`, { state: { formData: data, isEarlyStage: isEarlyStage, isAdherent: isValidAdherent } });
       }
     }
   };
@@ -373,122 +612,260 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
         <p className="text-muted-foreground mt-2">
           Remplissez ce formulaire pour obtenir une analyse personnalisée
         </p>
+        {(currentStep > 0 || Object.keys(savedData).length > 0) && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={resetForm}
+            className="mt-4"
+          >
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Recommencer le formulaire
+          </Button>
+        )}
       </div>
 
-      <ProgressBar 
-        currentStep={currentStep + 1} 
-        totalSteps={visibleSteps.length} 
+      <ProgressBar
+        currentStep={currentStep + 1}
+        totalSteps={visibleSteps.length}
       />
 
       <Card className="border-primary/20">
-        <CardHeader>
-          <CardTitle>{visibleSteps[currentStep]?.title}</CardTitle>
-        </CardHeader>
+        {visibleSteps[currentStep]?.id !== "adherent" && (
+          <CardHeader>
+            <CardTitle>{visibleSteps[currentStep]?.title}</CardTitle>
+          </CardHeader>
+        )}
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {visibleSteps[currentStep]?.id === "general" && (
+              {visibleSteps[currentStep]?.id === "adherent" && (
                 <div className="space-y-6">
+                  <div className="text-center mb-6 mt-6">
+                    <h2 className="text-2xl font-semibold text-foreground">
+                      Êtes-vous adhérent French Tech Grande Provence ?
+                    </h2>
+                  </div>
+
                   <FormField
                     control={form.control}
-                    name="projectName"
+                    name="isAdherent"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Nom de votre projet/entreprise *</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g. NomDeVotreStartup" {...field} />
+                          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                            <Button
+                              type="button"
+                              variant={field.value === "yes" ? "default" : "outline"}
+                              size="lg"
+                              className="w-full sm:w-40"
+                              onClick={() => {
+                                field.onChange("yes");
+                                setCodeError("");
+                              }}
+                            >
+                              Oui
+                            </Button>
+                            <Button
+                              type="button"
+                              variant={field.value === "no" ? "default" : "outline"}
+                              size="lg"
+                              className="w-full sm:w-40"
+                              onClick={() => {
+                                field.onChange("no");
+                                form.setValue("adherentCode", "");
+                                setCodeError("");
+                              }}
+                            >
+                              Non
+                            </Button>
+                          </div>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="sector"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Secteur d'activité *</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Sélectionnez..." />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="fintech">FinTech</SelectItem>
-                            <SelectItem value="healthtech">HealthTech</SelectItem>
-                            <SelectItem value="edtech">EdTech</SelectItem>
-                            <SelectItem value="ai">Intelligence Artificielle</SelectItem>
-                            <SelectItem value="saas">SaaS</SelectItem>
-                            <SelectItem value="ecommerce">E-commerce</SelectItem>
-                            <SelectItem value="other">Autre</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {sector === "other" && (
-                    <FormField
-                      control={form.control}
-                      name="sectorOther"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Précisez votre secteur d'activité</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Votre secteur d'activité..." {...field} />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
+                  {isAdherent === "yes" && (
+                    <div className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="adherentCode"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Code adhérent *</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Entrez votre code adhérent"
+                                {...field}
+                                onChange={(e) => {
+                                  field.onChange(e);
+                                  setCodeError("");
+                                }}
+                              />
+                            </FormControl>
+                            {codeError && (
+                              <p className="text-sm font-medium text-destructive">{codeError}</p>
+                            )}
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
                   )}
+                </div>
+              )}
+
+              {visibleSteps[currentStep]?.id === "hasProject" && (
+                <div className="space-y-6">
+                  <div className="text-center mb-6 mt-6">
+                    <h2 className="text-2xl font-semibold text-foreground">
+                      Avez-vous un projet entrepreneurial ?
+                    </h2>
+                  </div>
 
                   <FormField
                     control={form.control}
-                    name="stage"
+                    name="hasProject"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Stade de développement *</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Sélectionnez..." />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="idea">Idée</SelectItem>
-                            <SelectItem value="prototype">Prototype</SelectItem>
-                            <SelectItem value="mvp">MVP</SelectItem>
-                            <SelectItem value="market">Sur le marché</SelectItem>
-                            <SelectItem value="scaling">En phase de croissance</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                            <Button
+                              type="button"
+                              variant={field.value === "yes" ? "default" : "outline"}
+                              size="lg"
+                              className="w-full sm:w-40"
+                              onClick={() => field.onChange("yes")}
+                            >
+                              Oui
+                            </Button>
+                            <Button
+                              type="button"
+                              variant={field.value === "no" ? "default" : "outline"}
+                              size="lg"
+                              className="w-full sm:w-40"
+                              onClick={() => field.onChange("no")}
+                            >
+                              Non
+                            </Button>
+                          </div>
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+                </div>
+              )}
 
-                  {(stage === "market" || stage === "scaling") && (
-                    <FormField
-                      control={form.control}
-                      name="website"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Lien vers votre site</FormLabel>
-                          <FormControl>
-                            <Input placeholder="https://votre-site.com" {...field} />
-                          </FormControl>
-                        </FormItem>
+              {visibleSteps[currentStep]?.id === "general" && (
+                <div className="space-y-6">
+                  {hasProject === "yes" && (
+                    <>
+                      <FormField
+                        control={form.control}
+                        name="projectName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Nom de votre projet/entreprise *</FormLabel>
+                            <FormControl>
+                              <Input placeholder="e.g. NomDeVotreStartup" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="sector"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Secteur d'activité *</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              defaultValue={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Sélectionnez..." />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="fintech">FinTech</SelectItem>
+                                <SelectItem value="healthtech">HealthTech</SelectItem>
+                                <SelectItem value="edtech">EdTech</SelectItem>
+                                <SelectItem value="agrotech">AgroTech</SelectItem>
+                                <SelectItem value="ai">Intelligence Artificielle</SelectItem>
+                                <SelectItem value="saas">SaaS</SelectItem>
+                                <SelectItem value="ecommerce">E-commerce</SelectItem>
+                                <SelectItem value="other">Autre</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {sector === "other" && (
+                        <FormField
+                          control={form.control}
+                          name="sectorOther"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Précisez votre secteur d'activité</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Votre secteur d'activité..." {...field} />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
                       )}
-                    />
+
+                      <FormField
+                        control={form.control}
+                        name="stage"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Stade de développement *</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              defaultValue={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Sélectionnez..." />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="idea">Idée</SelectItem>
+                                <SelectItem value="prototype">Prototype</SelectItem>
+                                <SelectItem value="mvp">MVP</SelectItem>
+                                <SelectItem value="market">Sur le marché</SelectItem>
+                                <SelectItem value="scaling">En phase de croissance</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {(stage === "market" || stage === "scaling") && (
+                        <FormField
+                          control={form.control}
+                          name="website"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Lien vers votre site</FormLabel>
+                              <FormControl>
+                                <Input placeholder="https://votre-site.com" {...field} />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                      )}
+                    </>
                   )}
 
                   <FormField
@@ -498,7 +875,13 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
                       <FormItem>
                         <FormLabel>Pourquoi souhaitez-vous rejoindre la French Tech ? *</FormLabel>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                          {frenchTechMotivationOptions.map((option) => (
+                          {frenchTechMotivationOptions
+                            .filter(option =>
+                              hasProject === "yes" ||
+                              option.value === "reseau" ||
+                              option.value === "visibilite"
+                            )
+                            .map((option) => (
                             <FormField
                               key={option.value}
                               control={form.control}
@@ -869,8 +1252,8 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="1jour">1 jour/mois</SelectItem>
-                            <SelectItem value="2jours">2 jours/mois</SelectItem>
+                            <SelectItem value="1jour_sem">1 jour/sem</SelectItem>
+                            <SelectItem value="quelques_jours_mois">Quelques jours/mois</SelectItem>
                             <SelectItem value="semaine">1 semaine intensive</SelectItem>
                             <SelectItem value="soirs">Soirs et weekends</SelectItem>
                           </SelectContent>
@@ -878,6 +1261,70 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
                       </FormItem>
                     )}
                   />
+
+                  <FormField
+                    control={form.control}
+                    name="aidesFinancieres"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Avez-vous des aides financières ?</FormLabel>
+                        <div className="grid grid-cols-1 gap-3 mt-2">
+                          {[
+                            { value: "Pôle emploi", label: "Pôle emploi" },
+                            { value: "UpCo", label: "UpCo" },
+                            { value: "Autre", label: "Autre" },
+                          ].map((option) => (
+                            <FormField
+                              key={option.value}
+                              control={form.control}
+                              name="aidesFinancieres"
+                              render={({ field }) => {
+                                return (
+                                  <FormItem
+                                    key={option.value}
+                                    className="flex flex-row items-start space-x-3 space-y-0"
+                                  >
+                                    <FormControl>
+                                      <Checkbox
+                                        checked={field.value?.includes(option.value)}
+                                        onCheckedChange={(checked) => {
+                                          return checked
+                                            ? field.onChange([...(field.value || []), option.value])
+                                            : field.onChange(
+                                                field.value?.filter(
+                                                  (value) => value !== option.value
+                                                )
+                                              )
+                                        }}
+                                      />
+                                    </FormControl>
+                                    <FormLabel className="font-normal cursor-pointer">
+                                      {option.label}
+                                    </FormLabel>
+                                  </FormItem>
+                                )
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+
+                  {aidesFinancieres?.includes("Autre") && (
+                    <FormField
+                      control={form.control}
+                      name="autreAideFinanciere"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Précisez l'aide financière</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Nom de l'aide financière..." {...field} />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  )}
                 </div>
               )}
 
@@ -1191,6 +1638,27 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
                           <Input type="tel" placeholder="06 12 34 56 78" {...field} />
                         </FormControl>
                         <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
+
+              {visibleSteps[currentStep]?.id === "message" && (
+                <div className="space-y-6">
+                  <FormField
+                    control={form.control}
+                    name="userAddMessage"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Souhaitez-vous ajouter un message à votre demande ?</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Votre message..."
+                            rows={6}
+                            {...field}
+                          />
+                        </FormControl>
                       </FormItem>
                     )}
                   />

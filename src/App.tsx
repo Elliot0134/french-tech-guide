@@ -11,6 +11,7 @@ import ResultsSecondFormSubmitted from "./pages/ResultsSecondFormSubmitted";
 import { AuditForm } from "./components/AuditForm";
 import { SecondFormDetails } from "./components/SecondFormDetails";
 import Recommandations from "./pages/Recommandations"; // Import the new page
+import LoadingPage from "./pages/LoadingPage"; // Import LoadingPage
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -35,10 +36,11 @@ const App = () => {
               path="/results/second-form" 
               element={<SecondFormDetails />} 
             />
-            <Route 
-              path="/results/submitted" 
-              element={<ResultsSecondFormSubmitted />} 
+            <Route
+              path="/results/submitted"
+              element={<ResultsSecondFormSubmitted />}
             />
+            <Route path="/loading" element={<LoadingPage />} /> {/* Loading page for generation */}
             <Route path="/recommandations/:projectId" element={<Recommandations />} /> {/* New dynamic route */}
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -1,5 +1,5 @@
 import { AppLayout } from "@/components/layout/AppLayout";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import {
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 
 const Recommandations = () => {
   const { projectId } = useParams(); // Extract projectId from URL
+  const navigate = useNavigate();
   const [profileClient, setProfileClient] = useState<any>(null);
   const [recommandationsClient, setRecommandationsClient] = useState<any>(null);
   const [pdfFileUrl, setPdfFileUrl] = useState<string | null>(null); // Nouveau state pour l'URL du PDF
@@ -19,7 +20,7 @@ const Recommandations = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchData = async () => { // Renommé pour inclure la récupération du PDF
+    const checkStatusAndFetchData = async () => {
       if (!projectId) {
         setError("Project ID is missing.");
         setLoading(false);
@@ -27,9 +28,24 @@ const Recommandations = () => {
       }
 
       try {
+        // First, check the statut_generation table
+        const { data: statusData, error: statusError } = await supabase
+          .from("statut_generation")
+          .select("PDF")
+          .eq("project_id", projectId)
+          .single();
+
+        // If PDF is not "Terminé", redirect to loading page
+        if (statusError || !statusData || statusData.PDF !== "Terminé") {
+          console.log("PDF not ready yet, redirecting to loading page...");
+          navigate(`/loading?projectId=${projectId}`);
+          return;
+        }
+
+        // If PDF is "Terminé", fetch the data
         const { data, error } = await supabase
           .from("generation_ia")
-          .select("profile_client, recommandations_client, pdf_file_url") // Ajout de pdf_file_url
+          .select("profile_client, recommandations_client, pdf_file_url")
           .eq("project_id", projectId)
           .single();
 
@@ -40,7 +56,7 @@ const Recommandations = () => {
         if (data) {
           setProfileClient(data.profile_client);
           setRecommandationsClient(data.recommandations_client);
-          setPdfFileUrl(data.pdf_file_url); // Stocker l'URL du PDF
+          setPdfFileUrl(data.pdf_file_url);
         } else {
           setProfileClient("Aucune donnée de profil client trouvée.");
           setRecommandationsClient("Aucune donnée de recommandation client trouvée.");
@@ -54,8 +70,8 @@ const Recommandations = () => {
       }
     };
 
-    fetchData(); // Appel de la nouvelle fonction
-  }, [projectId]);
+    checkStatusAndFetchData();
+  }, [projectId, navigate]);
 
   return (
     <AppLayout>

@@ -39,7 +39,87 @@ export function SecondFormDetails() {
     const queryParams = new URLSearchParams(location.search);
     const id = queryParams.get("projectId");
     setProjectId(id);
-  }, [location.search]);
+
+    // Check if generation is in progress for this projectId on page load/reload
+    const checkAndPollGenerationStatus = async () => {
+      if (!id) return;
+
+      try {
+        // Check both statut_generation and generation_ia tables
+        const { data: statusData, error: statusError } = await supabase
+          .from('statut_generation')
+          .select('PDF')
+          .eq('project_id', id)
+          .maybeSingle(); // Use maybeSingle instead of single to avoid error if row doesn't exist
+
+        // If PDF is already "Terminé", redirect immediately
+        if (statusData && statusData.PDF === "Terminé") {
+          console.log("PDF already completed, redirecting to recommendations...");
+          navigate(`/recommandations/${id}`);
+          return;
+        }
+
+        // Also check if there's a row in generation_ia (alternative check)
+        const { data: genData, error: genError } = await supabase
+          .from('generation_ia')
+          .select('pdf_file_url')
+          .eq('project_id', id)
+          .maybeSingle();
+
+        // Show loading dialog if:
+        // 1. statut_generation exists and PDF is not "Terminé" (including null)
+        // OR
+        // 2. generation_ia exists but pdf_file_url is empty (generation in progress)
+        const shouldShowLoading =
+          (statusData && (statusData.PDF !== "Terminé" || statusData.PDF === null)) ||
+          (genData && (!genData.pdf_file_url || genData.pdf_file_url.trim() === ""));
+
+        if (shouldShowLoading) {
+          console.log("Generation in progress, showing loading dialog...");
+          setShowLoadingDialog(true);
+          startPolling(id);
+        }
+      } catch (error) {
+        console.error("Error checking generation status:", error);
+      }
+    };
+
+    checkAndPollGenerationStatus();
+  }, [location.search, navigate]);
+
+  // Polling function
+  const startPolling = (id: string) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('statut_generation')
+          .select('PDF')
+          .eq('project_id', id)
+          .maybeSingle();
+
+        // Only stop polling and redirect if PDF is explicitly "Terminé"
+        if (data && data.PDF === "Terminé") {
+          console.log("PDF generation complete!");
+          clearInterval(pollInterval);
+          setShowLoadingDialog(false);
+          // Redirect to recommendations
+          navigate(`/recommandations/${id}`);
+        } else {
+          // Log current status (for debugging)
+          console.log("PDF status:", data?.PDF || "null/not found");
+        }
+      } catch (error) {
+        console.error("Error polling generation status:", error);
+      }
+    }, 3000); // Poll every 3 seconds
+
+    // Timeout after 5 minutes
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      setShowLoadingDialog(false);
+      alert("La génération prend plus de temps que prévu. Veuillez réessayer ultérieurement.");
+    }, 300000);
+  };
 
   // Removed useEffect for polling statuses as per user request
 
@@ -59,9 +139,6 @@ export function SecondFormDetails() {
       return;
     }
 
-    setIsLoading(true); // Set loading to true
-    setShowLoadingDialog(true); // Show loading dialog immediately
-
     const dataToInsert = {
       project_id: projectId, // Add project_id to the data
       email: initialFormData.email, // Get email from the first form's data
@@ -70,7 +147,8 @@ export function SecondFormDetails() {
       additional_info: data.additional_info,
     };
 
-    try { // Main try block for Supabase insertion
+    try {
+      // Insert data into Supabase
       const { error: supabaseError } = await supabase
         .from('second_form_responses')
         .insert([dataToInsert]);
@@ -78,43 +156,36 @@ export function SecondFormDetails() {
       if (supabaseError) {
         console.error("Error inserting data into second form:", supabaseError);
         alert("Une erreur est survenue lors de l'enregistrement de vos réponses complémentaires.");
-        return; // Stop execution if Supabase insertion fails
+        return;
+      }
+
+      console.log("Second form data inserted successfully!");
+
+      // Send webhook (fire-and-forget, don't wait for response)
+      const webhookUrl = "https://n8n.srv906204.hstgr.cloud/webhook/formulaire-french-tech-idea";
+      fetch(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ projectId: projectId }),
+      }).then(response => {
+        if (response.ok) {
+          console.log("Webhook sent successfully!");
         } else {
-          console.log("Second form data inserted successfully!");
-
-          // Send projectId to webhook
-          try {
-            const webhookUrl = "https://n8n.srv906204.hstgr.cloud/webhook/formulaire-french-tech-idea";
-            const response = await fetch(webhookUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ projectId: projectId }),
-            });
-
-            if (!response.ok) {
-              console.error("Webhook call failed:", response.statusText);
-            } else {
-              console.log("ProjectId sent to webhook successfully!");
-            }
-          } catch (webhookError) {
-            console.error("Error sending projectId to webhook:", webhookError);
-            alert("Une erreur est survenue lors de l'envoi des données au webhook.");
-            setShowLoadingDialog(false); // Hide dialog on webhook error
-            setIsLoading(false); // Reset loading state
-            return; // Stop execution
-          }
-
-          // Navigate after successful webhook call
-          setShowLoadingDialog(false); // Hide dialog
-          navigate(`/recommandations/${projectId}`, { state: { projectId: projectId } });
+          console.error("Webhook call failed:", response.statusText);
         }
-    } catch (overallError) { // Catch for any errors during Supabase insertion or initial navigation
+      }).catch(error => {
+        console.error("Error sending webhook:", error);
+      });
+
+      // Show loading dialog immediately and start polling
+      setShowLoadingDialog(true);
+      startPolling(projectId);
+
+    } catch (overallError) {
       console.error("An unexpected error occurred:", overallError);
       alert("Une erreur inattendue est survenue.");
-    } finally {
-      setIsLoading(false); // Ensure loading is false after all operations
     }
   };
 
