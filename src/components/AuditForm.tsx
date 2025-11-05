@@ -241,6 +241,23 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
 
   // State for adherent code validation
   const [codeError, setCodeError] = useState<string>("");
+  const [codeValid, setCodeValid] = useState<boolean>(false);
+
+  // Real-time validation of adherent code
+  useEffect(() => {
+    const validCode = "FTGP-ADH-2025";
+    if (isAdherent === "yes" && adherentCode) {
+      if (adherentCode.trim().toUpperCase() === validCode) {
+        setCodeValid(true);
+        setCodeError("");
+      } else {
+        setCodeValid(false);
+      }
+    } else {
+      setCodeValid(false);
+      setCodeError("");
+    }
+  }, [adherentCode, isAdherent]);
 
   // Auto-save form data to localStorage
   useEffect(() => {
@@ -705,6 +722,9 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
                                 }}
                               />
                             </FormControl>
+                            {codeValid && (
+                              <p className="text-sm font-medium text-green-600">✓ Code valide</p>
+                            )}
                             {codeError && (
                               <p className="text-sm font-medium text-destructive">{codeError}</p>
                             )}

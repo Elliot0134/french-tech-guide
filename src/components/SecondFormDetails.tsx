@@ -10,8 +10,6 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Loader2 } from "lucide-react";
 
 const formSchema = z.object({
   clients: z.string().min(10, { message: "Veuillez décrire vos clients cibles (au moins 10 caractères)." }),
@@ -27,101 +25,12 @@ export function SecondFormDetails() {
   const initialFormData = location.state?.formData || {}; // Data from the first form
   
   const [projectId, setProjectId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false); // New loading state
-  const [showLoadingDialog, setShowLoadingDialog] = useState(false);
-  const [generationStatuses, setGenerationStatuses] = useState({
-    profil_client: "En attente",
-    plan_action: "En attente",
-    recommandations_strategiques: "En attente", // Changed from 'recommandations'
-  });
 
   useEffect(() => {
     const queryParams = new URLSearchParams(location.search);
     const id = queryParams.get("projectId");
     setProjectId(id);
-
-    // Check if generation is in progress for this projectId on page load/reload
-    const checkAndPollGenerationStatus = async () => {
-      if (!id) return;
-
-      try {
-        // Check both statut_generation and generation_ia tables
-        const { data: statusData, error: statusError } = await supabase
-          .from('statut_generation')
-          .select('PDF')
-          .eq('project_id', id)
-          .maybeSingle(); // Use maybeSingle instead of single to avoid error if row doesn't exist
-
-        // If PDF is already "Terminé", redirect immediately
-        if (statusData && statusData.PDF === "Terminé") {
-          console.log("PDF already completed, redirecting to recommendations...");
-          navigate(`/recommandations/${id}`);
-          return;
-        }
-
-        // Also check if there's a row in generation_ia (alternative check)
-        const { data: genData, error: genError } = await supabase
-          .from('generation_ia')
-          .select('pdf_file_url')
-          .eq('project_id', id)
-          .maybeSingle();
-
-        // Show loading dialog if:
-        // 1. statut_generation exists and PDF is not "Terminé" (including null)
-        // OR
-        // 2. generation_ia exists but pdf_file_url is empty (generation in progress)
-        const shouldShowLoading =
-          (statusData && (statusData.PDF !== "Terminé" || statusData.PDF === null)) ||
-          (genData && (!genData.pdf_file_url || genData.pdf_file_url.trim() === ""));
-
-        if (shouldShowLoading) {
-          console.log("Generation in progress, showing loading dialog...");
-          setShowLoadingDialog(true);
-          startPolling(id);
-        }
-      } catch (error) {
-        console.error("Error checking generation status:", error);
-      }
-    };
-
-    checkAndPollGenerationStatus();
-  }, [location.search, navigate]);
-
-  // Polling function
-  const startPolling = (id: string) => {
-    const pollInterval = setInterval(async () => {
-      try {
-        const { data, error } = await supabase
-          .from('statut_generation')
-          .select('PDF')
-          .eq('project_id', id)
-          .maybeSingle();
-
-        // Only stop polling and redirect if PDF is explicitly "Terminé"
-        if (data && data.PDF === "Terminé") {
-          console.log("PDF generation complete!");
-          clearInterval(pollInterval);
-          setShowLoadingDialog(false);
-          // Redirect to recommendations
-          navigate(`/recommandations/${id}`);
-        } else {
-          // Log current status (for debugging)
-          console.log("PDF status:", data?.PDF || "null/not found");
-        }
-      } catch (error) {
-        console.error("Error polling generation status:", error);
-      }
-    }, 3000); // Poll every 3 seconds
-
-    // Timeout after 5 minutes
-    setTimeout(() => {
-      clearInterval(pollInterval);
-      setShowLoadingDialog(false);
-      alert("La génération prend plus de temps que prévu. Veuillez réessayer ultérieurement.");
-    }, 300000);
-  };
-
-  // Removed useEffect for polling statuses as per user request
+  }, [location.search]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -179,9 +88,8 @@ export function SecondFormDetails() {
         console.error("Error sending webhook:", error);
       });
 
-      // Show loading dialog immediately and start polling
-      setShowLoadingDialog(true);
-      startPolling(projectId);
+      // Redirect to results page instead of showing loading dialog
+      navigate(`/results/submitted?projectId=${projectId}`);
 
     } catch (overallError) {
       console.error("An unexpected error occurred:", overallError);
@@ -264,8 +172,8 @@ export function SecondFormDetails() {
                   />
 
                   <CardFooter className="flex justify-end pt-2">
-                    <Button type="submit" variant="default" disabled={isLoading}>
-                      {isLoading ? "Envoi en cours..." : "Soumettre"}
+                    <Button type="submit" variant="default">
+                      Soumettre
                     </Button>
                   </CardFooter>
                 </form>
@@ -274,25 +182,6 @@ export function SecondFormDetails() {
           </Card>
         </div>
       </AppLayout>
-
-      <Dialog open={showLoadingDialog} onOpenChange={setShowLoadingDialog}>
-        <DialogContent className="sm:max-w-[425px]" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
-          <DialogHeader>
-            <DialogTitle>Génération de vos recommandations en cours...</DialogTitle>
-            <DialogDescription>
-              Veuillez patienter pendant que nous préparons votre analyse personnalisée.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 text-center">
-            <div className="flex items-center justify-center mb-4">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-            <p className="text-muted-foreground">
-              Vos recommandations sont en cours de préparation. Veuillez patienter...
-            </p>
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
