@@ -70,10 +70,10 @@ const hasProjectSchema = z.object({
 });
 
 const generalSchema = z.object({
-  projectName: z.string().min(2, { message: "Le nom du projet est requis" }),
-  sector: z.string().min(1, { message: "Le secteur d'activité est requis" }),
+  projectName: z.string().optional(),
+  sector: z.string().optional(),
   sectorOther: z.string().optional(),
-  stage: z.string().min(1, { message: "Le stade de développement est requis" }),
+  stage: z.string().optional(),
   website: z.string().optional(),
   frenchTechMotivations: z.array(z.string()).min(1, { message: "Veuillez sélectionner au moins une motivation" }),
 });
@@ -95,23 +95,23 @@ const budgetSchema = z.object({
 });
 
 const legalSchema = z.object({
-  companyCreated: z.string().min(1, { message: "Ce champ est requis" }),
+  companyCreated: z.string().optional(),
   legalForm: z.string().optional(),
   creationDate: z.string().optional(),
-  intellectualProperty: z.string().min(1, { message: "Ce champ est requis" }),
+  intellectualProperty: z.string().optional(),
 });
 
 const productSchema = z.object({
-  projectDescription: z.string().min(10, { message: "Veuillez fournir une description d'au moins 10 caractères" }),
-  productDescription: z.string().min(10, { message: "Veuillez fournir une description d'au moins 10 caractères" }),
-  hasUsers: z.string().min(1, { message: "Ce champ est requis" }),
+  projectDescription: z.string().optional(),
+  productDescription: z.string().optional(),
+  hasUsers: z.string().optional(),
   userCount: z.string().optional(),
 });
 
 const financeSchema = z.object({
-  fundraising: z.string().min(1, { message: "Ce champ est requis" }),
+  fundraising: z.string().optional(),
   amountRaised: z.string().optional(),
-  teamSize: z.string().min(1, { message: "Ce champ est requis" }),
+  teamSize: z.string().optional(),
 });
 
 const contactSchema = z.object({
@@ -291,12 +291,13 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
   const getVisibleSteps = () => {
     const steps = [...formSteps];
 
-    // If hasProject is "no", show only: adherent, hasProject, general (with limited motivations), contact, message
+    // If hasProject is "no", show only: adherent, hasProject, general (with limited motivations), motivations (details), contact, message
     if (hasProject === "no") {
       return steps.filter(step =>
         step.id === "adherent" ||
         step.id === "hasProject" ||
         step.id === "general" ||
+        step.id === "motivations" ||
         step.id === "contact" ||
         step.id === "message"
       );
@@ -375,6 +376,167 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
         });
         return;
       }
+    }
+
+    // Special validation for general step
+    if (currentStepId === "general") {
+      const currentValues = form.getValues();
+
+      // Validate frenchTechMotivations for both cases
+      if (!currentValues.frenchTechMotivations || currentValues.frenchTechMotivations.length === 0) {
+        form.setError("frenchTechMotivations", {
+          type: "manual",
+          message: "Veuillez sélectionner au moins une motivation",
+        });
+        return;
+      }
+
+      // When hasProject is "yes", validate additional fields
+      if (hasProject === "yes") {
+        let hasError = false;
+
+        if (!currentValues.projectName || currentValues.projectName.length < 2) {
+          form.setError("projectName", {
+            type: "manual",
+            message: "Le nom du projet est requis",
+          });
+          hasError = true;
+        }
+
+        if (!currentValues.sector || currentValues.sector === "") {
+          form.setError("sector", {
+            type: "manual",
+            message: "Le secteur d'activité est requis",
+          });
+          hasError = true;
+        }
+
+        if (!currentValues.stage || currentValues.stage === "") {
+          form.setError("stage", {
+            type: "manual",
+            message: "Le stade de développement est requis",
+          });
+          hasError = true;
+        }
+
+        if (hasError) {
+          return;
+        }
+      }
+
+      // Validation passed, move to next step
+      if (currentStep < visibleSteps.length - 1) {
+        setCurrentStep(currentStep + 1);
+        window.scrollTo(0, 0);
+      }
+      return;
+    }
+
+    // Special validation for legal step when hasProject is "yes"
+    if (currentStepId === "legal" && hasProject === "yes") {
+      const currentValues = form.getValues();
+      let hasError = false;
+
+      if (!currentValues.companyCreated || currentValues.companyCreated === "") {
+        form.setError("companyCreated", {
+          type: "manual",
+          message: "Ce champ est requis",
+        });
+        hasError = true;
+      }
+
+      if (!currentValues.intellectualProperty || currentValues.intellectualProperty === "") {
+        form.setError("intellectualProperty", {
+          type: "manual",
+          message: "Ce champ est requis",
+        });
+        hasError = true;
+      }
+
+      if (hasError) {
+        return;
+      }
+
+      // Validation passed, move to next step
+      if (currentStep < visibleSteps.length - 1) {
+        setCurrentStep(currentStep + 1);
+        window.scrollTo(0, 0);
+      }
+      return;
+    }
+
+    // Special validation for product step when hasProject is "yes"
+    if (currentStepId === "product" && hasProject === "yes") {
+      const currentValues = form.getValues();
+      let hasError = false;
+
+      if (!currentValues.projectDescription || currentValues.projectDescription.length < 10) {
+        form.setError("projectDescription", {
+          type: "manual",
+          message: "Veuillez fournir une description d'au moins 10 caractères",
+        });
+        hasError = true;
+      }
+
+      if (!currentValues.productDescription || currentValues.productDescription.length < 10) {
+        form.setError("productDescription", {
+          type: "manual",
+          message: "Veuillez fournir une description d'au moins 10 caractères",
+        });
+        hasError = true;
+      }
+
+      if (!currentValues.hasUsers || currentValues.hasUsers === "") {
+        form.setError("hasUsers", {
+          type: "manual",
+          message: "Ce champ est requis",
+        });
+        hasError = true;
+      }
+
+      if (hasError) {
+        return;
+      }
+
+      // Validation passed, move to next step
+      if (currentStep < visibleSteps.length - 1) {
+        setCurrentStep(currentStep + 1);
+        window.scrollTo(0, 0);
+      }
+      return;
+    }
+
+    // Special validation for finance step when hasProject is "yes"
+    if (currentStepId === "finance" && hasProject === "yes") {
+      const currentValues = form.getValues();
+      let hasError = false;
+
+      if (!currentValues.fundraising || currentValues.fundraising === "") {
+        form.setError("fundraising", {
+          type: "manual",
+          message: "Ce champ est requis",
+        });
+        hasError = true;
+      }
+
+      if (!currentValues.teamSize || currentValues.teamSize === "") {
+        form.setError("teamSize", {
+          type: "manual",
+          message: "Ce champ est requis",
+        });
+        hasError = true;
+      }
+
+      if (hasError) {
+        return;
+      }
+
+      // Validation passed, move to next step
+      if (currentStep < visibleSteps.length - 1) {
+        setCurrentStep(currentStep + 1);
+        window.scrollTo(0, 0);
+      }
+      return;
     }
 
     const currentSchema = stepSchemas[schemaIndex];
@@ -470,15 +632,22 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
     const isValidAdherent = data.isAdherent === "yes" &&
                             data.adherentCode?.trim().toUpperCase() === "FTGP-ADH-2025";
 
+    // Convert date from YYYY-MM-DD to DD/MM/YYYY
+    const formatDateToFrench = (dateStr: string): string | null => {
+      if (!dateStr || dateStr === "") return null;
+      const [year, month, day] = dateStr.split('-');
+      return `${day}/${month}/${year}`;
+    };
+
     const dataToInsert = {
       project_id: projectId, // Add project_id to the data
       adherant: isValidAdherent,
       has_project: data.hasProject === "yes",
-      nom_projet: data.projectName,
-      secteur_activite: data.sector,
-      secteur_autre: data.sectorOther,
-      stade_developpement: data.stage,
-      site_web: data.website,
+      nom_projet: data.projectName || "",
+      secteur_activite: data.sector || "",
+      secteur_autre: data.sectorOther || "",
+      stade_developpement: data.stage || "",
+      site_web: data.website || "",
       motivations_french_tech: data.frenchTechMotivations ? JSON.stringify(data.frenchTechMotivations) : null,
       accompagnement_projet: data.accompagnementProject ? JSON.stringify(data.accompagnementProject) : null,
       reseau_communaute: data.reseauCommunaute ? JSON.stringify(data.reseauCommunaute) : null,
@@ -486,26 +655,26 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
       financement_business: data.financementBusiness ? JSON.stringify(data.financementBusiness) : null,
       ressources_support: data.ressourcesSupport ? JSON.stringify(data.ressourcesSupport) : null,
       visibilite_opportunites: data.visibiliteOpportunites ? JSON.stringify(data.visibiliteOpportunites) : null,
-      budget_formation: data.budgetFormation,
-      disponibilite: data.disponibilite,
+      budget_formation: data.budgetFormation || "",
+      disponibilite: data.disponibilite || "",
       aides_financieres: data.aidesFinancieres ? JSON.stringify(data.aidesFinancieres) : null,
-      autre_aide_financiere: data.autreAideFinanciere,
-      entreprise_creee: data.companyCreated,
-      forme_juridique: data.legalForm,
-      date_creation: data.creationDate === "" ? null : data.creationDate,
-      propriete_intellectuelle: data.intellectualProperty,
-      description_projet: data.projectDescription,
-      description_produits_services: data.productDescription,
-      a_utilisateurs: data.hasUsers,
+      autre_aide_financiere: data.autreAideFinanciere || "",
+      entreprise_creee: data.companyCreated || "",
+      forme_juridique: data.legalForm || "",
+      date_creation: formatDateToFrench(data.creationDate || ""),
+      propriete_intellectuelle: data.intellectualProperty || "",
+      description_projet: data.projectDescription || "",
+      description_produits_services: data.productDescription || "",
+      a_utilisateurs: data.hasUsers || "",
       nombre_utilisateurs: data.userCount ? parseInt(data.userCount) : null,
-      levee_fonds: data.fundraising,
+      levee_fonds: data.fundraising || "",
       montant_leve: data.amountRaised ? parseInt(data.amountRaised) : null,
-      taille_equipe: data.teamSize,
+      taille_equipe: data.teamSize || "",
       prenom: data.firstName,
       nom: data.lastName,
       email: data.email,
       telephone: data.phone,
-      user_add_message: data.userAddMessage,
+      user_add_message: data.userAddMessage || "",
     };
 
     const { error } = await supabase
@@ -528,31 +697,42 @@ export function AuditForm({ setFormData, initialData, startStepId }: AuditFormPr
 
       // Send projectId, aidesFinancieres, autreAideFinanciere and userAddMessage to webhook
       try {
-        const webhookUrl = "https://n8n.srv906204.hstgr.cloud/webhook/formulaire-french-tech";
+        const webhookUrl = "https://n8n.srv906204.hstgr.cloud/webhook/formulaire-1-french-tech";
+        const webhookPayload = {
+          projectId: projectId,
+          aidesFinancieres: data.aidesFinancieres || [],
+          autreAideFinanciere: data.autreAideFinanciere || "",
+          userAddMessage: data.userAddMessage || ""
+        };
+
+        console.log("Calling webhook:", webhookUrl);
+        console.log("Webhook payload:", webhookPayload);
+
         const response = await fetch(webhookUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            projectId: projectId,
-            aidesFinancieres: data.aidesFinancieres || [],
-            autreAideFinanciere: data.autreAideFinanciere || "",
-            userAddMessage: data.userAddMessage || ""
-          }),
+          body: JSON.stringify(webhookPayload),
         });
 
+        console.log("Webhook response status:", response.status);
+        console.log("Webhook response ok:", response.ok);
+
         if (!response.ok) {
-          console.error("Webhook call failed:", response.statusText);
+          const errorText = await response.text();
+          console.error("Webhook call failed:", response.statusText, errorText);
         } else {
           console.log("ProjectId, aidesFinancieres and userAddMessage sent to webhook successfully!");
         }
       } catch (webhookError) {
         console.error("Error sending data to webhook:", webhookError);
+        console.error("Webhook error details:", webhookError);
       }
 
       // Determine which results page to navigate to based on the stage
-      const isEarlyStage = ["idea", "mvp", "prototype"].includes(data.stage);
+      // If user has no project (hasProject = "no"), treat as early stage
+      const isEarlyStage = data.hasProject === "no" || ["idea", "mvp", "prototype"].includes(data.stage || "");
 
       // If this is the second form submission, navigate to the submitted results page
       if (startStepId) {
